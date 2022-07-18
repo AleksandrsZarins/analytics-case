@@ -1,0 +1,46 @@
+--Exporting sql code from BigQuery is still not a feature?: https://stackoverflow.com/questions/51823294/export-all-the-sql-code-not-data-from-big-query
+
+--Can accesss through: https://console.cloud.google.com/bigquery?sq=805604297089:43506154d2eb40f593cf56b4a5e96351
+
+--If link does not work then:
+
+--Active users day by day
+select count(distinct (user_id)) as Users, cast(Day as DATE) as Day from (select *, etl_tstamp as Day from `snowplow_hackathonPI.events_hackathon`) group by Day order by 2 asc;
+
+--Sessions day by day
+select count(distinct (eh.domain_sessionid)) as Sessions, cast(eh.etl_tstamp AS Date) as Day from `snowplow_hackathonPI.events_hackathon` as eh group by Day order by 2 desc;
+
+--Page views day by day
+select count(event) as PageViews, cast(Day as DATE) as Day from (select *, etl_tstamp as Day from `snowplow_hackathonPI.events_hackathon`) where event = 'page_view' group by Day order by 2 desc;
+
+ --Page views for specific day
+select count(event) as PageViews, cast(Day as DATE) as Day from (select *, etl_tstamp as Day from `snowplow_hackathonPI.events_hackathon`) where event = 'page_view' and extract(date FROM etl_tstamp) = '2021-09-03' group by Day order by 2 desc;
+
+--Customers day by day
+select count(distinct (hashed_customer_name)) as Customers, cast(Day as DATE) as Day from (select *, etl_tstamp as Day from `snowplow_hackathonPI.events_hackathon`) group by Day order by 2 desc;
+
+--Time per page
+/*
+create search index time_per_page
+on snowplow_hackathonPI.events_hackathon (hashed_page_urlpath,etl_tstamp,domain_sessionid);
+*/
+--Had access error when making index
+-- Access Denied: Table snowplow-cto-office:snowplow_hackathonPI.events_hackathon: Permission bigquery.tables.createIndex denied on table snowplow-cto-office:snowplow_hackathonPI.events_hackathon (or it may not exist). 
+--Would create an index to possibly make the query faster
+with timetable as (
+select eh.hashed_page_urlpath as Page,
+eh.etl_tstamp - max(t.etl_tstamp) as elapsed_time,
+cast(eh.etl_tstamp AS Date) as Day
+from `snowplow_hackathonPI.events_hackathon` as eh left outer join `snowplow_hackathonPI.events_hackathon` as t
+on eh.domain_sessionid = t.domain_sessionid and t.etl_tstamp < eh.etl_tstamp
+group by eh.hashed_page_urlpath, eh.etl_tstamp)
+select timetable.Page, sum(extract(second from timetable.elapsed_time)) as Total_time, avg(extract(second from timetable.elapsed_time)) as Average_time, Day
+from timetable 
+group by timetable.Page, Day;
+
+--Activity for user types
+select distinct (user_type) from `snowplow_hackathonPI.events_hackathon`; --only Admin users?
+--There is a link in the Context sheet of the event dictionary for context_user, but for me it gets stuck at;
+--Redirecting you to http://storage.googleapis.com/snowplow-datascience-cto-office-schemas/prod/schemas/com.visma-tech-hubs/context_user/jsonschema/1-0-0
+--If there were other user types I could compare actvity by splitting all previous queries for each user type
+
